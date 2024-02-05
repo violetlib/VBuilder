@@ -1,0 +1,29 @@
+<html>
+<head>
+  <title>$taskDoc.getAntName()</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+
+<div class="main">
+
+<div class="sidebar">
+#parse ("html/menutop.vm")
+
+#if ($antroot.getCategories().isEmpty())
+#if ($category.equals("auxiliary"))
+#set ($category = "all")
+#end
+#parse ("html/taskindex.vm")
+#else
+#parse ("html/categoryindex.vm")
+#end
+</end>
+</div>
+
+#parse ("html/task.vm")
+</div>
+
+#parse ("html/footer.vm")
+</body>
+</html>

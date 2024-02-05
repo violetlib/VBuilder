@@ -1,0 +1,22 @@
+<div class="menu categorymenu">
+
+## Iterate through the Categories
+#foreach ($cat in $antroot.getCategories())
+#if ($cat.equals($category))
+<h3 class="selected"><a href="category-${cat}.html">$cat</a></h3>
+#else
+<h3><a href="category-${cat}.html">$cat</a></h3>
+#end
+#end
+#if ($antroot.getUncategorizedElementCount() > 0)
+#if ($category.equals("none"))
+<h3 class="selected"><a href="category-none.html">others</a></h3>
+#else
+<h3><a href="category-none.html">others</a></h3>
+#end
+#end
+</div>
+
+#if ($category && !$category.equals("auxiliary"))
+#parse("html/taskindex.vm")
+#end

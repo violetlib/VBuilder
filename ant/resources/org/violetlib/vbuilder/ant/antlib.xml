@@ -1,0 +1,16 @@
+<antlib>
+    <taskdef name="deleteDirectory" classname="org.violetlib.vbuilder.ant.DeleteDirectoryTask"/>
+    <taskdef name="jni" classname="org.violetlib.vbuilder.ant.NativeLibraryTask"/>
+    <taskdef name="javaApplication" classname="org.violetlib.vbuilder.ant.JavaApplicationTask"/>
+    <taskdef name="javaLibrary" classname="org.violetlib.vbuilder.ant.JavaLibraryTask"/>
+    <taskdef name="deleteDirectory" classname="org.violetlib.vbuilder.ant.DeleteDirectoryTask" />
+    <typedef name="classpath" className="org.violetlib.vbuilder.ant.ClassPath"/>
+    <typedef name="use" className="org.violetlib.vbuilder.ant.UseLibrary"/>
+    <typedef name="defineLibrary" className="org.violetlib.vbuilder.ant.DefineLibrary"/>
+    <typedef name="installLocal" className="org.violetlib.vbuilder.ant.MavenInstallLocalTask"/>
+    <typedef name="source" className="org.violetlib.vbuilder.ant.JavaSourceTree"/>
+    <typedef name="sources" className="org.violetlib.vbuilder.ant.JavaSourceTreeList"/>
+    <typedef name="tasks" className="org.violetlib.vbuilder.ant.TaskCollection"/>
+    <typedef name="target" className="org.violetlib.vbuilder.ant.Target"/>
+    <typedef name="targets" className="org.violetlib.vbuilder.ant.TargetContainer"/>
+</antlib>

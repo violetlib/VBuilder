@@ -1,0 +1,11 @@
+<div class="menu">
+
+## Iterate through the Categories
+#foreach ($category in $antroot.getCategories())
+<a href="index.${category}.html">$category</a><br>
+#end
+#if ($antroot.getUncategorizedElementCount() > 0)
+<a href="index.none.html">others</a><br>
+#end
+
+</div>

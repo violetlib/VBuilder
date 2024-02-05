@@ -1,0 +1,162 @@
+<div class="content">
+<h1>$taskDoc.getAntKind() $taskDoc.getAntName()</h1>
+
+<div class="description">
+<p>
+$taskDoc.getDescription()
+</div>
+
+## Report properties
+
+#if ($taskDoc.getProperties().size() > 0)
+    <h3><a name="properties">Properties</a></h3>
+
+        <table>
+            <tr>
+                <td valign="top" align="left"><b>Property</b></td>
+                <td valign="top" align="left"><b>Description</b></td>
+                <td valign="top" align="left"><b>Type</b></td>
+            </tr>
+
+#foreach ($prop in $taskDoc.getProperties() )
+
+            <tr>
+                <td valign="top" align="left">
+                    $taskDoc.getPropertyName($prop)
+                </td>
+
+                <td valign="top" align="left">
+                     $taskDoc.getPropertyDescription($prop)
+                </td>
+
+                <td valign="top" align="left">
+                    $taskDoc.getPropertyTypeLinked($prop)
+                </td>
+            </tr>
+#end
+        </table>
+#end
+
+## Report references
+
+#if ($taskDoc.getReferences().size() > 0)
+    <h3><a name="references">References</a></h3>
+
+        <table>
+            <tr>
+                <td valign="top" align="left"><b>Reference</b></td>
+                <td valign="top" align="left"><b>Description</b></td>
+                <td valign="top" align="left"><b>Type</b></td>
+            </tr>
+
+#foreach ($ref in $taskDoc.getReferences() )
+
+            <tr>
+                <td valign="top" align="left">
+                    $taskDoc.getReferenceName($ref)
+                </td>
+
+                <td valign="top" align="left">
+                     $taskDoc.getReferenceDescription($ref)
+                </td>
+
+                <td valign="top" align="left">
+                    $taskDoc.getReferenceTypeLinked($ref)
+                </td>
+            </tr>
+#end
+        </table>
+#end
+
+## Report attributes
+
+#if ($taskDoc.getAttributes().size() > 0)
+    <h3><a name="attributes">Parameters accepted as attributes</a></h3>
+
+        <table>
+            <tr>
+                <td valign="top" align="left"><b>Attribute</b></td>
+                <td valign="top" align="left"><b>Description</b></td>
+                <td valign="top" align="left"><b>Type</b></td>
+                <td valign="top" align="left"><b>Required?</b></td>
+            </tr>
+
+  #foreach ($attr in $taskDoc.getAttributes() )
+
+            <tr>
+                <td valign="top" align="left">
+                     $taskDoc.getAttributeName($attr)
+                </td>
+
+                <td valign="top" align="left">
+                     $taskDoc.getAttributeDescription($attr)
+                </td>
+
+                <td valign="top" align="left">
+                    $taskDoc.getAttributeTypesLinked($attr)
+                </td>
+
+                <td valign="top" align="left">
+
+    #if( $taskDoc.getAttributeRequired($attr) )
+                       <b>Yes.</b> $taskDoc.getAttributeRequired($attr)
+    #elseif ( $taskDoc.getAttributeNotRequired($attr) )
+                       <b>No.</b> $taskDoc.getAttributeNotRequired($attr)
+    #else ?
+    #end
+                </td>
+            </tr>
+  #end
+        </table>
+#end
+
+#if ($taskDoc.getNamedElements().size() > 0 || $taskDoc.getNestedElementTypes().size() > 0 || $taskDoc.isTaskContainer() || $taskDoc.supportsText())
+
+  <h3>Parameters accepted as nested elements</h3>
+
+  <div class="description">
+
+  ## Report nested tasks
+
+  #if ($taskDoc.isTaskContainer())
+      <h4>Task ...</h4>
+    #if ($taskDoc.getNestedTaskDescription())
+      <p>$taskDoc.getNestedTaskDescription()</p>
+    #else
+      <p>This Task is a Container (it accepts nested Tasks).</p>
+    #end
+  #end
+
+  ## Report embedded text
+
+  #if ($taskDoc.supportsText())
+      <h4>Embedded Text ...</h4>
+    #if ($taskDoc.getTextDescription())
+      <p>$taskDoc.getTextDescription()</p>
+    #else
+      <p>This type accepts text in its element body.</p>
+    #end
+  #end
+
+  ## Report named nested elements
+
+  #foreach ($element in $taskDoc.getNamedElements())
+    <h4>$taskDoc.getNestedElementTypeLinked($element) $taskDoc.getNamedElementName($element) ...</h4>
+    #if ($taskDoc.getNamedNestedElementDescription($element))
+      $taskDoc.getNamedNestedElementDescription($element)
+    #end
+  #end
+
+  ## Report unnamed nested element types
+
+  #foreach ($type in $taskDoc.getNestedElementTypes())
+    <h4>${taskDoc.getNestedElementTypeLinked($type)} ...</h4>
+    #if ($taskDoc.getNestedElementTypeDescription($type))
+      $taskDoc.getNestedElementTypeDescription($type)
+    #end
+  #end
+
+  </div>
+#end
+
+</div>
