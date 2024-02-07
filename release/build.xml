@@ -13,6 +13,10 @@
 
   <taskdef resource="org/apache/maven/resolver/ant/antlib.xml"/>
 
+  <tstamp>
+    <format property="NOW" timezone="GMT" pattern="yyyy-MM-dd'T'HH:mm:ss'Z'"/>
+  </tstamp>
+
   <property name="src.core" value="../core/src"/>
   <property name="src.ant" value="../ant/src"/>
   <property name="resourcesdir.core" value="../core/resources"/>
@@ -39,6 +43,13 @@
       <fileset dir="${expanddir}"/>
       <fileset dir="${distdir}"/>
     </delete>
+  </target>
+
+  <target name="saveIDs">
+    <echo file="${classesdir}/org/violetlib/vbuilder/RELEASE.txt" message="${RELEASE}"/>
+    <echo file="${classesdir}/org/violetlib/vbuilder/BUILD.txt" message="${NOW}"/>
+    <echo file="${classesdir}/org/violetlib/vbuilder/ant/RELEASE.txt" message="${RELEASE}"/>
+    <echo file="${classesdir}/org/violetlib/vbuilder/ant/BUILD.txt" message="${NOW}"/>
   </target>
 
   <target name="resolve-maven">
@@ -116,18 +127,18 @@
     </javac>
   </target>
 
-  <target name="build" depends="clean, compile-core-java, compile-ant-java">
+  <target name="build" depends="clean, saveIDs, compile-core-java, compile-ant-java">
     <mkdir dir="${distdir}"/>
     <mkdir dir="${expanddir}"/>
     <delete file="${classesdir}/META-INF/MANIFEST.MF" quiet="true"/>
 
     <jar jarfile="${distdir}/${jarfilename-core}" manifest="${resourcesdir.core}/Manifest">
-      <fileset dir="${classesdir}" includes="org/violetlib/vbuilder/*.class"/>
+      <fileset dir="${classesdir}" includes="org/violetlib/vbuilder/*.*"/>
       <fileset dir="${resourcesdir.core}" includes="org/violetlib/vbuilder/*.*" excludes="Manifest"/>
     </jar>
 
     <jar jarfile="${distdir}/${jarfilename-ant}" manifest="${resourcesdir.ant}/Manifest">
-      <fileset dir="${classesdir}" includes="org/violetlib/vbuilder/ant/*.class"/>
+      <fileset dir="${classesdir}" includes="org/violetlib/vbuilder/ant/*.*"/>
       <fileset dir="${resourcesdir.ant}" includes="org/violetlib/vbuilder/ant/*.*" excludes="Manifest"/>
     </jar>
 
