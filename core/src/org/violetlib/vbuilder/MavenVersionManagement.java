@@ -83,7 +83,7 @@ public class MavenVersionManagement
         String existing = preferredVersions.get(key);
         if (existing == null) {
             if (isValidKey(key)) {
-                //reporter.info("Setting preferred version for " + key + ": " + version + " " + this);
+                reporter.verbose("Setting preferred version for " + key + ": " + version + " " + this);
                 preferredVersions.put(key, version);
             } else {
                 reporter.error("Invalid artifact key: " + key);
