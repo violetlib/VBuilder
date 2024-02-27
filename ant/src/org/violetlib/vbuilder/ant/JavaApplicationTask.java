@@ -696,11 +696,11 @@ public class JavaApplicationTask
         String applicationName = getApplicationName();
         String mainClassName = getMainClassName();
 
-        mm = MavenVersionManagement.get(p, new AntBuildDelegate(p));
+        mm = AntMavenVersionManagement.get(p, new AntBuildDelegate(p));
 
         installDefaults();
 
-        mm.logPreferredVersions();
+        mm.logPreferredVersions(ProjectReporter.create(p));
 
         TaskCollection th = p.getReference(APPLICATION_DEFAULT_TASKS);
         if (th != null) {

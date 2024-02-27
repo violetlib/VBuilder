@@ -18,7 +18,6 @@ import org.apache.tools.ant.taskdefs.Manifest;
 import org.apache.tools.ant.types.Commandline;
 import org.apache.tools.ant.types.Reference;
 import org.apache.tools.ant.types.ResourceCollection;
-import org.apache.tools.ant.types.resources.Resources;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.violetlib.collections.ICollection;
@@ -392,8 +391,8 @@ public class JavaLibraryTask
             }
         }
 
-        MavenVersionManagement mm = MavenVersionManagement.get(p, new AntBuildDelegate(p));
-        mm.logPreferredVersions();
+        MavenVersionManagement mm = AntMavenVersionManagement.get(p, new AntBuildDelegate(p));
+        mm.logPreferredVersions(ProjectReporter.create(p));
 
         org.apache.tools.ant.types.Path compilePath = new org.apache.tools.ant.types.Path(p);
         org.apache.tools.ant.types.Path runtimePath = new org.apache.tools.ant.types.Path(p);
@@ -422,16 +421,15 @@ public class JavaLibraryTask
             compilePath = r.compilePath;
             jarFiles = jarFiles.extendingAll(r.runtimeFiles);
 
-            if (false) {
-                // debug
-                System.err.println("  Compile-time:");
+            if (true) {
+                Reporter reporter = ProjectReporter.create(p);
                 for (File f : r.compileFiles) {
-                    System.err.println(f);
+                    reporter.info("        " + f.getPath() + " [compile]");
                 }
-                System.err.println("  Runtime:");
                 for (File f : r.runtimeFiles) {
-                    System.err.println(f);
+                    reporter.info("        " + f.getPath());
                 }
+                reporter.info("");
             }
         }
 

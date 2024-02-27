@@ -159,7 +159,7 @@ public class UseLibrary
             Project p = getProject();
             if (p != null && artifactKey != null && version != null) {
                 isRegistered = true;
-                MavenVersionManagement mm = MavenVersionManagement.get(p, ProjectReporter.create(p));
+                MavenVersionManagement mm = AntMavenVersionManagement.get(p, ProjectReporter.create(p));
                 mm.setPreferredVersion(artifactKey, version);
             }
         }
