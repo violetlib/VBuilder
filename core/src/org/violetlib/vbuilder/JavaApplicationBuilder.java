@@ -11,8 +11,10 @@ package org.violetlib.vbuilder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.violetlib.collections.*;
+import org.violetlib.types.InvalidDataException;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
@@ -43,7 +45,7 @@ import static java.nio.file.attribute.PosixFilePermission.*;
   <li>A basic JAR that includes only the directly specified classes and resources.</li>
   </ul>
 
-  When building a universal bundled application, a JDK runtime is copied into the bundled application for
+  When building a universal bundled application, a Java runtime is copied into the bundled application for
   each supported application. A universal bundled application requires a launcher that understands how to find
   the appropriate runtime for the execution environment.
   <p>
@@ -160,8 +162,6 @@ public class JavaApplicationBuilder
 
       @param nativeFrameworks Native frameworks needed by the application.
 
-      @param libOutputDirectory If not null, the required native libraries and frameworks are copied to this directory.
-
       @param codeSigningKey If not null, all code artifacts will be signed using this key to identify a signing
       certificate.
     */
@@ -192,7 +192,6 @@ public class JavaApplicationBuilder
       @NotNull IMap<Architecture,ArchitectureConfiguration> archConfigs,
       @NotNull ISet<NativeLibrary> nativeLibraries,
       @NotNull ISet<NativeFramework> nativeFrameworks,
-      @Nullable File libOutputDirectory,
       @Nullable String codeSigningKey
     )
     {
@@ -221,7 +220,6 @@ public class JavaApplicationBuilder
           archConfigs,
           nativeLibraries,
           nativeFrameworks,
-          libOutputDirectory,
           codeSigningKey);
     }
 
@@ -272,8 +270,6 @@ public class JavaApplicationBuilder
 
         public final @NotNull ISet<NativeFramework> nativeFrameworks;
 
-        public final @Nullable File libOutputDirectory;
-
         public final @Nullable String codeSigningKey;
 
         protected Configuration(@NotNull String applicationName,
@@ -301,7 +297,6 @@ public class JavaApplicationBuilder
                                 @NotNull IMap<Architecture,ArchitectureConfiguration> archConfigs,
                                 @NotNull ISet<NativeLibrary> nativeLibraries,
                                 @NotNull ISet<NativeFramework> nativeFrameworks,
-                                @Nullable File libOutputDirectory,
                                 @Nullable String codeSigningKey)
         {
             this.applicationName = applicationName;
@@ -329,7 +324,6 @@ public class JavaApplicationBuilder
             this.archConfigs = archConfigs;
             this.nativeLibraries = nativeLibraries;
             this.nativeFrameworks = nativeFrameworks;
-            this.libOutputDirectory = libOutputDirectory;
             this.codeSigningKey = codeSigningKey;
         }
     }
@@ -423,22 +417,6 @@ public class JavaApplicationBuilder
             architectures = ISet.of(executionArchitecture);
         }
 
-        // Validate the architecture(s)
-
-        for (Architecture arch : architectures) {
-            ArchitectureConfiguration a = g.archConfigs.get(arch);
-            assert a != null;
-            if (!Files.isDirectory(a.jdkRuntime.toPath())) {
-                buildFailed("Specified JDK runtime for " + arch + " not found: " + a.jdkRuntime);
-            }
-
-            try {
-                Utils.validateRuntime(a.jdkRuntime);
-            } catch (Exception e) {
-                buildFailed("JDK runtime for " + arch + " is invalid: " + e.getMessage());
-            }
-        }
-
         BundledApplicationOption bundledApplicationOption
           = determineBundledApplicationOption(architectures, g.shouldCreateUniversalApplication);
 
@@ -473,14 +451,14 @@ public class JavaApplicationBuilder
 
         boolean willExpand = g.shouldBuildApplication || g.applicationJarDir != null;
 
-        File libOutputDirectory = getDynamicLibraryOutputDirectory();
         IList<File> classTrees = collectClassTrees(g.classTrees);
-        IList<File> classTreesAndJarFiles = willExpand ? collectClassTreesAndJarFiles(classTrees, g.jars) : IList.empty();
+        IList<File> classTreesAndJarFiles = willExpand ? collectClassTreesAndJarFilesForExpansion(classTrees, g.jars) : IList.empty();
         IList<Object> resources = collectResources(g.resources);
         ISet<NativeLibrary> nativeLibraries = collectNativeLibraries(g.nativeLibraries);
         ISet<NativeFramework> nativeFrameworks = collectNativeFrameworks(g.nativeFrameworks, architectures);
 
         File buildRoot = validateBuildRoot(g.buildRoot);
+        File libOutputDirectory = getDynamicLibraryOutputDirectory(buildRoot);
 
         return new InternalConfiguration(bundledApplicationOption,
           classTrees,
@@ -525,7 +503,8 @@ public class JavaApplicationBuilder
         return b.values();
     }
 
-    private @NotNull IList<File> collectClassTreesAndJarFiles(@NotNull IList<File> trees, @NotNull ISet<File> jars)
+    private @NotNull IList<File> collectClassTreesAndJarFilesForExpansion(@NotNull IList<File> trees,
+                                                                          @NotNull ISet<File> jars)
     {
         ListBuilder<File> b = IList.builder();
         b.addAll(trees);
@@ -534,10 +513,16 @@ public class JavaApplicationBuilder
             if (!name.endsWith(".jar")) {
                 delegate.error("Unexpected JAR file name: " + jar);
             } else {
-                if (!Files.isRegularFile(jar.toPath())) {
-                    delegate.error("Specified JAR file not found: " + jar);
-                } else {
-                    b.add(jar.getAbsoluteFile());
+                try {
+                    if (!Files.isRegularFile(jar.toPath())) {
+                        delegate.error("Specified JAR file not found: " + jar);
+                    } else if (Utils.isModularJarFile(jar)) {
+                        delegate.error("Cannot expand modular JAR file: " + jar);
+                    } else {
+                        b.add(jar.getAbsoluteFile());
+                    }
+                } catch (IOException e) {
+                    delegate.error("Unable to access JAR file: " + jar);
                 }
             }
         }
@@ -604,12 +589,6 @@ public class JavaApplicationBuilder
             }
         }
         return b.values();
-    }
-
-    private boolean isValidRuntime(@NotNull File f)
-    {
-        File java = new File(f, "bin/java");
-        return Files.isRegularFile(java.toPath());
     }
 
     private @NotNull File validateBuildRoot(@NotNull File f)
@@ -729,6 +708,10 @@ public class JavaApplicationBuilder
 
             File expandedClassesDir = getExpandedClassesDir();
             JarExpander.Result r = copyElements(gg.classTreesAndJarFiles, expandedClassesDir, gg.libOutputDirectory);
+
+            // A native library or framework is not copied and not registered if it is already present in the output
+            // directory. This causes problems if the output directories were filled by a previous application build.
+
             nativeLibraries.addAll(r.nativeLibraries.toJavaList());
             nativeFrameworks.addAll(r.nativeFrameworks.toJavaList());
 
@@ -934,21 +917,9 @@ public class JavaApplicationBuilder
         return getCleanOutputDirectory("expanded");
     }
 
-    private @NotNull File getJarOutputDir()
+    private @NotNull File getDynamicLibraryOutputDirectory(@NotNull File buildRoot)
     {
-        return getOutputDirectory("jars");
-    }
-
-    private @NotNull File getDynamicLibraryOutputDirectory()
-    {
-        if (g.libOutputDirectory != null) {
-            if (!Files.isDirectory(g.libOutputDirectory.toPath())) {
-                buildFailed("Native library output directory not found: " + g.libOutputDirectory);
-            }
-            return g.libOutputDirectory;
-        }
-
-        return getOutputDirectory("lib");
+        return getCleanOutputDirectory(buildRoot, "lib");
     }
 
     private @NotNull File getOutputFile(@NotNull String name)
@@ -985,7 +956,12 @@ public class JavaApplicationBuilder
 
     private @NotNull File getCleanOutputDirectory(@NotNull String name)
     {
-        Path dp = new File(gg.buildRoot, name).toPath();
+        return getCleanOutputDirectory(gg.buildRoot, name);
+    }
+
+    private @NotNull File getCleanOutputDirectory(@NotNull File buildRoot, @NotNull String name)
+    {
+        Path dp = new File(buildRoot, name).toPath();
         try {
             if (Files.isDirectory(dp, LinkOption.NOFOLLOW_LINKS)) {
                 Utils.deleteDirectoryContents(dp);
@@ -1171,28 +1147,32 @@ public class JavaApplicationBuilder
             assert a != null;
             if (isFirst) {
                 isFirst = false;
-                // Create an application image using the first runtime. Then move the runtime to the appropriate location
-                // in the application image.
+                // Create an application image using the first runtime. Then move the runtime to the appropriate
+                // location in the application image.
                 createApplicationImage(arch, appBuildLocation);
                 File standardRuntimeLocation = new File(appBuildLocation, "Contents/runtime");
                 if (!Files.isDirectory(standardRuntimeLocation.toPath())) {
                     buildFailed("Failed to find installed runtime at " + standardRuntimeLocation.getPath());
                 }
-                fixJLI(a.jdkRuntime, standardRuntimeLocation);
                 try {
-                    File specificLocation = getRuntimeLocation(appBuildLocation, arch);
+                    JavaRuntime appRuntime = JavaRuntime.ofBundle(standardRuntimeLocation);
+
+
+                    fixJLI(appRuntime);
+                    File specificLocation = getRuntimeBundleLocation(appBuildLocation, arch);
                     Files.move(standardRuntimeLocation.toPath(), specificLocation.toPath());
                     firstRuntime = specificLocation;
-                } catch (IOException e) {
-                    buildFailed("Unable to install Intel runtime: " + e.getMessage());
+                } catch (IOException | InvalidDataException e) {
+                    buildFailed("Unable to install runtime: " + e.getMessage());
                 }
             } else {
                 // Copy the runtime for this architecture into the application image.
-                File specificLocation = getRuntimeLocation(appBuildLocation, arch);
+                File specificLocation = getRuntimeBundleLocation(appBuildLocation, arch);
                 try {
                     assert firstRuntime != null;
-                    installSecondaryRuntime(firstRuntime, a, specificLocation);
-                } catch (IOException e) {
+                    JavaRuntime firstBundle = JavaRuntime.ofBundle(firstRuntime);
+                    installSecondaryRuntime(firstBundle, a, specificLocation);
+                } catch (IOException | InvalidDataException e) {
                     buildFailed("Unable to install runtime for " + arch.getName() + ", " + e, e);
                 }
             }
@@ -1211,28 +1191,41 @@ public class JavaApplicationBuilder
         }
     }
 
-    private void installSecondaryRuntime(@NotNull File firstRuntime,
+    private void installSecondaryRuntime(@NotNull JavaRuntime firstRuntime,
                                          @NotNull ArchitectureConfiguration a,
-                                         @NotNull File targetRuntime)
+                                         @NotNull File targetBundle)
       throws IOException
     {
-        File dest = new File(targetRuntime, "Contents/Home");
-        File macos = new File(targetRuntime, "Contents/MacOS");
-        Files.createDirectories(dest.toPath());
-        Files.createDirectories(macos.toPath());
-
         ISet<String> excludes = ISet.of("jmods", "src.zip", "demo", "man");
-        Utils.copyDirectory(a.jdkRuntime, targetRuntime, excludes);
 
-        // Create the extra Contents. This duplicates what jpackage has already done for the first architecture.
-        File existingPropertyListFile = new File(firstRuntime, "Contents/Info.plist");
-        File targetPropertyListFile = new File(targetRuntime, "Contents/Info.plist");
-        Files.copy(existingPropertyListFile.toPath(), targetPropertyListFile.toPath(), COPY_ATTRIBUTES, REPLACE_EXISTING);
-        File targetLibraryFile = new File(targetRuntime, "Contents/MacOS/libjli.dylib");
-        copyJLILibrary(a.jdkRuntime, targetLibraryFile);
+        // If the runtime is in a bundle, copy the bundle.
+        JavaRuntime source = a.javaRuntime;
+        if (source.isBundle()) {
+            Utils.copyDirectory(source.top(), targetBundle, excludes);
+        } else {
+            // If the runtime is a bare runtime, create the bundle structure and copy the runtime
+            // into the new bundle.
+            File dest = new File(targetBundle, "Contents/Home");
+            Files.createDirectories(dest.toPath());
+            Utils.copyDirectory(source.runtime(), dest, excludes);
+            // Also create the MacOS directory.
+            File macos = new File(targetBundle, "Contents/MacOS");
+            Files.createDirectories(macos.toPath());
+            // Create additional Contents. This duplicates what jpackage does when it creates a runtime bundle.
+            File existingPropertyListFile = new File(firstRuntime.top(), "Contents/Info.plist");
+            File targetPropertyListFile = new File(targetBundle, "Contents/Info.plist");
+            Files.copy(existingPropertyListFile.toPath(), targetPropertyListFile.toPath(), COPY_ATTRIBUTES, REPLACE_EXISTING);
+        }
+
+        try {
+            JavaRuntime runtime = JavaRuntime.ofBundle(targetBundle);
+            fixJLI(runtime);
+        } catch (InvalidDataException e) {
+            throw new IOException(e.getMessage());
+        }
     }
 
-    private @NotNull File getRuntimeLocation(@NotNull File app, @NotNull Architecture arch)
+    private @NotNull File getRuntimeBundleLocation(@NotNull File app, @NotNull Architecture arch)
     {
         return new File(app, "Contents/runtime-" + arch.getName());
     }
@@ -1254,21 +1247,6 @@ public class JavaApplicationBuilder
         }
         if (!Files.isExecutable(launcher.toPath())) {
             buildFailed("Specified launcher is not executable: " + launcher);
-        }
-    }
-
-    private void copyJLILibrary(@NotNull File runtime, @NotNull File target)
-      throws IOException
-    {
-        Path jliName = new File("libjli.dylib").toPath();
-        try (Stream<Path> walk = Files.walk(runtime.toPath())) {
-            Path jli = walk
-              .filter(file -> file.getFileName().equals(jliName))
-              .findFirst()
-              .orElseThrow(NoSuchElementException::new);
-            Files.copy(jli, target.toPath(), COPY_ATTRIBUTES, REPLACE_EXISTING);
-        } catch (NoSuchElementException ex) {
-            throw new IOException("libjli.dylib not found in " + runtime);
         }
     }
 
@@ -1322,7 +1300,7 @@ public class JavaApplicationBuilder
             ArchitectureConfiguration a = g.archConfigs.get(targetArchitecture);
             assert a != null;
             if (targetArchitecture != executionArchitecture) {
-                fixLauncher(targetArchitecture, dest, a.jdkRuntime);
+                fixLauncher(targetArchitecture, dest, a.javaRuntime);
             } else {
                 File lf = new File(dest, "Contents/MacOS/" + g.applicationName);
                 updateLauncherSearchPath(lf);
@@ -1334,7 +1312,7 @@ public class JavaApplicationBuilder
     {
         ArchitectureConfiguration a = g.archConfigs.get(arch);
         assert a != null;
-        File javaRuntime = a.jdkRuntime;
+        JavaRuntime javaRuntime = a.javaRuntime;
         IList<String> javaOptions = g.javaOptions;
 
         if (Files.isDirectory(appDest.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -1370,7 +1348,7 @@ public class JavaApplicationBuilder
     private void createApplicationImage(@NotNull String applicationName,
                                         @NotNull String mainClassName,
                                         @NotNull File applicationJAR,
-                                        @NotNull File javaRuntime,
+                                        @NotNull JavaRuntime javaRuntime,
                                         @NotNull IList<String> javaOptions,
                                         @NotNull IList<String> appArgs,
                                         @NotNull File appDest
@@ -1449,7 +1427,7 @@ public class JavaApplicationBuilder
         args.add(mainClassName);
 
         args.add("--runtime-image");
-        args.add(javaRuntime.getAbsolutePath());
+        args.add(javaRuntime.runtime().getAbsolutePath());
 
         if (javaOptionsString != null) {
             args.add("--java-options");
@@ -1541,12 +1519,12 @@ public class JavaApplicationBuilder
 
     private void fixLauncher(@NotNull Architecture targetArchitecture,
                              @NotNull File application,
-                             @NotNull File jdkBaseImage)
+                             @NotNull JavaRuntime runtime)
     {
         String prefix = "Unable to build " + targetArchitecture + " application: ";
 
         // Find the jpackage module file
-        File jmodFile = new File(jdkBaseImage, "jmods/jdk.jpackage.jmod");
+        File jmodFile = new File(runtime.runtime(), "jmods/jdk.jpackage.jmod");
         if (!jmodFile.isFile()) {
             String msg = prefix + jmodFile + " not found";
             buildFailed(msg);
@@ -1582,29 +1560,37 @@ public class JavaApplicationBuilder
     }
 
     /**
+      Ensure that a runtime bundle contains a symlink to the startup library in the MacOS subdirectory.
+      <p>
       Older JDKs have a symlink at Contents/MacOS/libjli.dylib.
       jpackage always copies the actual library file to that location.
       This method restores the symlink.
+      <p>
+      Runtime bundles created by this class also need to install the symlink.
     */
 
-    private void fixJLI(@NotNull File jdkBaseImage, @NotNull File targetRuntime)
+    private void fixJLI(@NotNull JavaRuntime runtime)
+      throws IOException
     {
-        File original = new File(jdkBaseImage, "Contents/MacOS/libjli.dylib");
-        File target = new File(targetRuntime, "Contents/MacOS/libjli.dylib");
-        if (!original.exists()) {
-            buildFailed("Unable to find: " + original);
-        }
-        if (!target.exists()) {
-            buildFailed("Unable to find: " + target);
-        }
-        Path op = original.toPath();
+        assert runtime.isBundle();
+
+        File dir = new File(runtime.top(), "Contents/MacOS");
+        Files.createDirectories(dir.toPath());
+        File target = new File(dir, "libjli.dylib");
         Path tp = target.toPath();
-        if (Files.isSymbolicLink(op) && !Files.isSymbolicLink(tp)) {
+        if (Files.isRegularFile(tp, LinkOption.NOFOLLOW_LINKS) || !Files.exists(tp, LinkOption.NOFOLLOW_LINKS)) {
+            File library = runtime.startupLibrary();
+            if (!library.isFile()) {
+                // should not happen
+                throw new FileNotFoundException("File libjli.dylib not found in Java runtime");
+            }
+            Files.deleteIfExists(tp);
             try {
-                Files.delete(tp);
-                Files.createSymbolicLink(tp, new File("../Home/lib/libjli.dylib").toPath());
+                Path relativePath = runtime.runtime().toPath().relativize(library.toPath());
+                Path macOSRelativePath = new File("../Home", relativePath.toString()).toPath();
+                Files.createSymbolicLink(tp, macOSRelativePath);
             } catch (IOException ex) {
-                buildFailed("Unable to create symlink at " + tp + " " + ex);
+                throw new IOException("Unable to create symlink at " + tp + " " + ex);
             }
         }
     }
@@ -2073,20 +2059,6 @@ public class JavaApplicationBuilder
         } catch (IOException e) {
             buildFailed("Unable to copy: " + e);
             throw new AssertionError();
-        }
-    }
-
-    private void validateForExpansion(@NotNull ISet<File> fs)
-    {
-        for (File f : fs) {
-            try {
-                if (Utils.isModularJarFile(f)) {
-                    buildFailed("Modular JAR files may not be expanded: " + f);
-                    throw new AssertionError();
-                }
-            } catch (IOException ignore) {
-                // error will be reported later
-            }
         }
     }
 

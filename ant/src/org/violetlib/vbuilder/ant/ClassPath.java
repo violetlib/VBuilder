@@ -86,8 +86,6 @@ public class ClassPath
     private @NotNull IList<String> exclusions = IList.empty();
     private boolean isTop;
 
-    private enum Scope { REQUIRED, COMPILE, RUNTIME, INCLUDED }
-
     private @Nullable String compileLibraryNames;
     private @Nullable String requiredLibraryNames;
     private @Nullable String includedLibraryNames;
@@ -394,11 +392,18 @@ public class ClassPath
             IList<Dependency> ds = IList.create(nestedDependencies);
             nestedDependencies.clear();
             for (Dependency d : ds) {
+                String key = d.getGroupId() + ":" + d.getArtifactId();
                 String version = d.getVersion();
                 if (version == null) {
-                    String key = d.getGroupId() + ":" + d.getArtifactId();
                     version = getPreferredVersion(key);
                     d.setVersion(version);
+                }
+                String scope = d.getScope();
+                if (scope == null) {
+                    String mavenScope = Utils.toMavenScope(getPreferredScope(key));
+                    if (mavenScope != null) {
+                        d.setScope(mavenScope);
+                    }
                 }
                 addDependency(d);
             }
@@ -688,6 +693,21 @@ public class ClassPath
         nestedDependencies.add(d);
     }
 
+    /**
+      For use by UseLibrary.
+    */
+
+    public void replaceDependency(@Nullable Dependency old, @NotNull Dependency d)
+    {
+        if (isReference()) {
+            throw noChildrenAllowed();
+        }
+        if (old != null) {
+            nestedDependencies.remove(old);
+        }
+        nestedDependencies.add(d);
+    }
+
     private @NotNull IList<File> getLibraries(@NotNull String s, @NotNull Scope scope)
     {
         ListBuilder<File> b = IList.builder();
@@ -764,7 +784,7 @@ public class ClassPath
             File p = new File(f, name);
             if (p.isFile()) {
                 //info("Found " + requested + " at " + p.getPath() + " for " + scope);
-                foundLibraryReporter.add(requested, p.getPath(), scope.name());
+                foundLibraryReporter.add(requested, p.getPath(), scope);
                 return p;
             }
         }
@@ -806,10 +826,9 @@ public class ClassPath
         Dependency d = new Dependency();
         d.setProject(project);
         d.setCoords(mc.key + ":" + version);
-        if (scope == Scope.COMPILE) {
-            d.setScope("provided");
-        } else if (scope == Scope.RUNTIME) {
-            d.setScope("runtime");
+        String mavenScope = Utils.toMavenScope(scope);
+        if (mavenScope != null) {
+            d.setScope(mavenScope);
         }
         addDependency(d);
     }
@@ -832,7 +851,6 @@ public class ClassPath
             error(String.format("Conflicting versions for %s — %s, %s", key, existingVersion, version));
             return;
         }
-
         dependencies.addDependency(d);
     }
 
@@ -877,6 +895,14 @@ public class ClassPath
             }
             return "LATEST";
         }
+    }
+
+    private @Nullable Scope getPreferredScope(@NotNull String key)
+    {
+        if (mm != null) {
+            return mm.getScope(key);
+        }
+        return null;
     }
 
     private @NotNull Dependencies ensureDependencies()

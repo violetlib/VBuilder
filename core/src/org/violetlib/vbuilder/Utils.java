@@ -14,7 +14,10 @@ import org.violetlib.collections.IList;
 import org.violetlib.collections.ISet;
 import org.violetlib.collections.ListBuilder;
 
-import java.io.*;
+import java.io.EOFException;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.*;
 import java.util.Enumeration;
 import java.util.jar.JarEntry;
@@ -32,38 +35,6 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 public class Utils
 {
     static final int BUFFER_SIZE = 1024;
-
-    public static void validateRuntime(@NotNull File jdk)
-      throws IllegalArgumentException, FileNotFoundException
-    {
-        jdk = resolve(jdk);  // Allow links to the root directory
-
-        if (!Files.exists(jdk.toPath(), NOFOLLOW_LINKS)) {
-            throw new FileNotFoundException("not found: " + jdk);
-        }
-
-        if (!Files.isDirectory(jdk.toPath(), NOFOLLOW_LINKS)) {
-            throw new FileNotFoundException("not a directory: " + jdk);
-        }
-
-        File home = new File(jdk, "Contents/Home");
-        if (!Files.isDirectory(home.toPath(), NOFOLLOW_LINKS)) {
-            throw new IllegalArgumentException("Contents/Home not found: " + jdk);
-        }
-        File bin = new File(home, "bin");
-        if (!Files.isDirectory(bin.toPath(), NOFOLLOW_LINKS)) {
-            throw new IllegalArgumentException("Contents/Home/bin not found: " + jdk);
-        }
-        File lib1 = new File(home, "lib/libjli.dylib");
-        File lib2 = new File(home, "lib/jli/libjli.dylib");
-        File lib3 = new File(home, "jre/lib/jli/libjli.dylib");
-        if (!Files.isRegularFile(lib1.toPath(), NOFOLLOW_LINKS)
-          && !Files.isRegularFile(lib2.toPath(), NOFOLLOW_LINKS)
-          && !Files.isRegularFile(lib3.toPath(), NOFOLLOW_LINKS)
-        ) {
-            throw new IllegalArgumentException("launcher not found: " + jdk);
-        }
-    }
 
     /**
       Resolve a symlink to the actual path, if possible.
@@ -110,23 +81,11 @@ public class Utils
     }
 
 
-    public static @NotNull ISet<Architecture> getJavaRuntimeArchitectures(@NotNull File runtime)
+    public static @NotNull ISet<Architecture> getJavaRuntimeArchitectures(@NotNull JavaRuntime runtime)
       throws IOException
     {
-        runtime = resolve(runtime);  // Allow links to the root directory
-        File home = new File(runtime, "Contents/Home");
-        if (Files.isDirectory(home.toPath(), NOFOLLOW_LINKS)) {
-            File lib = new File(home, "lib");
-            if (!Files.isDirectory(lib.toPath(), NOFOLLOW_LINKS)) {
-                lib = new File(home, "jre/lib");
-                if (!Files.isDirectory(lib.toPath(), NOFOLLOW_LINKS)) {
-                    throw new IOException("Not a valid Java runtime (unable to find libjli): " + runtime);
-                }
-            }
-            File f = new File(lib, "libjli.dylib");
-            return NativeLibrarySupport.getArchitectures(f);
-        }
-        throw new IOException("Not a valid Java runtime (unable to find Contents/Home): " + runtime);
+        File lib = runtime.startupLibrary();
+        return NativeLibrarySupport.getArchitectures(lib);
     }
 
     /**
@@ -859,5 +818,34 @@ public class Utils
     {
         Path p = Files.createTempDirectory(prefix);
         return p.toFile();
+    }
+
+    public static @Nullable String toMavenScope(@Nullable Scope scope)
+    {
+        if (scope == Scope.COMPILE) {
+            return "provided";
+        } else if (scope == Scope.RUNTIME) {
+            return "runtime";
+        } else if (scope == Scope.REQUIRED) {
+            return "compile";
+        }
+        return null;
+    }
+
+    public static @Nullable Scope fromMavenScope(@Nullable String scope)
+    {
+        if (scope == null) {
+            return null;
+        }
+        if (scope.equals("provided")) {
+            return Scope.COMPILE;
+        }
+        if (scope.equals("runtime")) {
+            return Scope.RUNTIME;
+        }
+        if (scope.equals("compile")) {
+            return Scope.REQUIRED;
+        }
+        return null;
     }
 }

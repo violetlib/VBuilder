@@ -12,9 +12,7 @@ import org.jetbrains.annotations.NotNull;
 import org.violetlib.collections.IList;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 /**
 
@@ -33,11 +31,12 @@ public class FoundLibraryReporter
     private static class Info
     {
         public final @NotNull String location;
-        public final @NotNull Set<String> scopes = new HashSet<>();
+        public @NotNull Scopes scopes;
 
-        public Info(@NotNull String location)
+        public Info(@NotNull String location, @NotNull Scope scope)
         {
             this.location = location;
+            this.scopes = Scopes.of(scope);
         }
     }
 
@@ -46,7 +45,7 @@ public class FoundLibraryReporter
         this.reporter = reporter;
     }
 
-    public void add(@NotNull String libraryName, @NotNull String location, @NotNull String scope)
+    public void add(@NotNull String libraryName, @NotNull String location, @NotNull Scope scope)
     {
         Info existing = libraryInfoMap.get(libraryName);
         if (existing != null) {
@@ -55,10 +54,9 @@ public class FoundLibraryReporter
                 reporter.error("  " + existing.location);
                 reporter.error("  " + location + " [ignored]");
             }
-            existing.scopes.add(scope);
+            existing.scopes = existing.scopes.extending(scope);
         } else {
-            Info info = new Info(location);
-            info.scopes.add(scope);
+            Info info = new Info(location, scope);
             libraryInfoMap.put(libraryName, info);
         }
     }
@@ -84,12 +82,11 @@ public class FoundLibraryReporter
         sb.append(String.format("%25s", name));
         sb.append(": ");
         sb.append(info.location);
-        IList<String> scopes = IList.create(info.scopes).sort();
-        for (String scope : scopes) {
+        IList<Scope> scopes = IList.create(info.scopes.scopes()).sort();
+        for (Scope scope : scopes) {
             sb.append("  ");
             sb.append(scope);
         }
         r.info(sb.toString());
     }
-
 }

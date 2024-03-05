@@ -20,9 +20,11 @@ import org.apache.tools.ant.types.resources.FileResource;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.violetlib.collections.*;
+import org.violetlib.types.InvalidDataException;
 import org.violetlib.vbuilder.*;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -71,24 +73,24 @@ public class JavaApplicationTask
     public static final @NotNull String APPNAME = "appname";
 
     /**
-      This property specifies the default JDK runtime to install in an arm64 application if no arm64 JDK is specified in
-      the task definition.
+      This property specifies the default JDK or Java runtime to install in an arm64 application if no arm64 JDK is
+      specified in the task definition.
       @ant.prop type="File"
     */
 
     public static final @NotNull String JDK_ARM = "jdk_arm";
 
     /**
-      This property specifies the default JDK runtime to install in an x86_64 application if no x86 JDK is specified in
-      the task definition.
+      This property specifies the default JDK or Java runtime to install in an x86_64 application if no x86 JDK is
+      specified in the task definition.
       @ant.prop type="File"
     */
 
     public static final @NotNull String JDK_X86 = "jdk_x86";
 
     /**
-      This property specifies the JDK runtime to install in a multi-architecture application if no generic JDK is
-      specified in the task definition.
+      This property specifies the JDK or Java runtime to install in a multi-architecture application if no generic JDK
+      is specified in the task definition.
       @ant.prop type="File"
     */
 
@@ -218,12 +220,12 @@ public class JavaApplicationTask
     // The jpackage program wants a runtime image, but as a convenience, it allows a JDK to be provided. It maps the
     // JDK path to the corresponding JDK runtime image path.
 
-    // The runtime in a bundled app created by jpackage is a JDK (unfortunate naming). It is created from a JDK runtime
+    // The runtime in a bundled app created by jpackage is a bundle. It is created from a Java runtime
     // image, with the extra Contents created or installed by jpackage.
 
-    protected @Nullable File jdk;
-    protected @Nullable File jdk_x86;
-    protected @Nullable File jdk_arm;
+    protected @Nullable JavaRuntime jdk;
+    protected @Nullable JavaRuntime jdk_x86;
+    protected @Nullable JavaRuntime jdk_arm;
 
     protected @Nullable ISet<Architecture> requestedTargetArchitectures;
     protected @Nullable File jarDist;
@@ -442,36 +444,36 @@ public class JavaApplicationTask
     }
 
     /**
-      Specify the location of a JDK to install in the application. See the description of the {@code jdk} property for
-      details.
+      Specify the location of a JDK or Java runtime to install in the application. See the description of the {@code
+      jdk} property for details.
       @ant.optional
     */
 
     public void setJdk(@NotNull File f)
     {
-        jdk = f;
+        jdk = getJavaRuntime(f);
     }
 
     /**
-      Specify the location of a JDK to install in an x86 application. See the description of the {@code jdk_x86}
-      property for details.
+      Specify the location of a JDK or Java runtime to install in an x86 application. See the description of the {@code
+      jdk_x86} property for details.
       @ant.optional
     */
 
     public void setJdk_x86(@NotNull File f)
     {
-        jdk_x86 = f;
+        jdk_x86 = getJavaRuntime(f);
     }
 
     /**
-      Specify the location of a JDK to install in an arm64 application. See the description of the {@code jdk_arm}
-      property for details.
+      Specify the location of a JDK or Java runtime to install in an arm64 application. See the description of the
+      {@code jdk_arm} property for details.
       @ant.optional
     */
 
     public void setJdk_arm(@NotNull File f)
     {
-        jdk_arm = f;
+        jdk_arm = getJavaRuntime(f);
     }
 
     /**
@@ -700,7 +702,7 @@ public class JavaApplicationTask
 
         installDefaults();
 
-        mm.logPreferredVersions(ProjectReporter.create(p));
+        mm.logPreferredVersionsAndScopes(ProjectReporter.create(p));
 
         TaskCollection th = p.getReference(APPLICATION_DEFAULT_TASKS);
         if (th != null) {
@@ -764,7 +766,6 @@ public class JavaApplicationTask
         IList<String> appArgs = getAppArgs();
         ISet<NativeLibrary> nativeLibraries = getNativeLibraries();
         ISet<NativeFramework> nativeFrameworks = getNativeFrameworks();
-        File libOutputDirectory = getLibraryOutputDir(buildRoot);
         String codeSigningKey = getCodeSigningKey();
         return JavaApplicationBuilder.createConfiguration(
           applicationName,
@@ -792,7 +793,6 @@ public class JavaApplicationTask
           architectures,
           nativeLibraries,
           nativeFrameworks,
-          libOutputDirectory,
           codeSigningKey
         );
     }
@@ -826,7 +826,7 @@ public class JavaApplicationTask
         for (Architecture arch : g.archConfigs.keySet()) {
             ArchitectureConfiguration a = g.archConfigs.get(arch);
             assert a != null;
-            info("  JDK [" + arch.getName() + "]: " + a.jdkRuntime);
+            info("  Java runtime [" + arch.getName() + "]: " + a.javaRuntime);
         }
 
         if (g.basicJarDir != null) {
@@ -864,22 +864,22 @@ public class JavaApplicationTask
 
     private @Nullable ArchitectureConfiguration getConfiguration(@NotNull File base, @NotNull Architecture arch)
     {
-        File jdk = getJavaRuntimeForArch(arch);
-        if (jdk != null) {
+        JavaRuntime runtime = getJavaRuntimeForArch(arch);
+        if (runtime != null) {
             File outputRoot = getOutputRootForArch(arch, base);
             IList<File> appInstallDirs = getAppInstallDirs(arch);
-            return ArchitectureConfiguration.create(outputRoot, appInstallDirs, jdk);
+            return ArchitectureConfiguration.create(outputRoot, appInstallDirs, runtime);
         } else {
             error("Did not find Java runtime for " + arch.getName());
             return null;
         }
     }
 
-    private @Nullable File getJavaRuntimeForArch(@NotNull Architecture arch)
+    private @Nullable JavaRuntime getJavaRuntimeForArch(@NotNull Architecture arch)
     {
-        File jdk = getDefaultJdk(arch);
+        JavaRuntime jdk = getDefaultJavaRuntime(arch);
         if (jdk == null) {
-            File defaultJDK = this.jdk;
+            JavaRuntime defaultJDK = this.jdk;
             if (defaultJDK != null) {
                 try {
                     ISet<Architecture> archs = Utils.getJavaRuntimeArchitectures(defaultJDK);
@@ -1082,12 +1082,24 @@ public class JavaApplicationTask
         return validateOrCreateDirectory(new File(buildRoot, "jars"), "basic JAR output directory");
     }
 
-    private @Nullable File getDefaultJdk(@Nullable Architecture arch)
+    private @Nullable JavaRuntime getDefaultJavaRuntime(@Nullable Architecture arch)
     {
         String prop = arch == Architecture.ARM ? JDK_ARM : (arch == Architecture.Intel ? JDK_X86 : JDK);
         String s = getProperty(prop);
         if (s != null && !s.isEmpty()) {
-            return new File(s);
+            return getJavaRuntime(new File(s));
+        }
+        return null;
+    }
+
+    private @Nullable JavaRuntime getJavaRuntime(@NotNull File f)
+    {
+        try {
+            return JavaRuntime.create(f);
+        } catch (FileNotFoundException e) {
+            error("Java runtime not found: " + f.getPath());
+        } catch (InvalidDataException e) {
+            error("Java runtime is not valid (" + e.getMessage() + ") " + f.getPath());
         }
         return null;
     }

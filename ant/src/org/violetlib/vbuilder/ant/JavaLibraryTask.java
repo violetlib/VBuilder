@@ -137,7 +137,7 @@ public class JavaLibraryTask
 
     /**
       Specify the library name.
-      @ant.prop name="classpath"
+      @ant.prop name="name"
       @ant.required
     */
 
@@ -148,6 +148,11 @@ public class JavaLibraryTask
 
     /**
       Specify source trees and Java libraries required for compilation and/or inclusion in a library or application.
+      The specified source trees and Java libraries augment the information obtained using the {@code classPathRef}
+      attribute. If the {@code classPathRef} attribute is not defined an no nested {@link classpath} elements are
+      provided, a {@link classpath} with identifier {@code Classpath.Use} will be used, if defined. {@link use}
+      elements in the same project implicitly define that {@link classpath}.
+
       @ant.prop name="classpath"
     */
 
@@ -159,7 +164,7 @@ public class JavaLibraryTask
     /**
       Specify source trees and Java libraries required for compilation and/or inclusion in a library or application.
       @ant.prop name="classpathRef"
-      @ant.optional If not specified, nested classpath elements must be used.
+      @ant.optional This information may be provided using nested {@link classpath} elements.
     */
 
     public void setClasspathref(@NotNull Reference r)
@@ -392,13 +397,21 @@ public class JavaLibraryTask
         }
 
         MavenVersionManagement mm = AntMavenVersionManagement.get(p, new AntBuildDelegate(p));
-        mm.logPreferredVersions(ProjectReporter.create(p));
+        mm.logPreferredVersionsAndScopes(ProjectReporter.create(p));
 
         org.apache.tools.ant.types.Path compilePath = new org.apache.tools.ant.types.Path(p);
         org.apache.tools.ant.types.Path runtimePath = new org.apache.tools.ant.types.Path(p);
 
         Dependencies ds = new Dependencies();
         ds.setProject(p);
+
+        if (providedClassPaths.isEmpty()) {
+            ClassPath implicitClassPath = p.getReference(UseLibrary.IMPLICIT_CLASSPATH);
+            if (implicitClassPath != null) {
+                p.log("Using implicit class path", Project.MSG_VERBOSE);
+                providedClassPaths.add(implicitClassPath);
+            }
+        }
 
         if (!providedClassPaths.isEmpty()) {
             IList<String> exceptions = IList.of(libraryName + ".jar");
@@ -421,10 +434,12 @@ public class JavaLibraryTask
             compilePath = r.compilePath;
             jarFiles = jarFiles.extendingAll(r.runtimeFiles);
 
-            if (true) {
+            if (false) {
                 Reporter reporter = ProjectReporter.create(p);
                 for (File f : r.compileFiles) {
-                    reporter.info("        " + f.getPath() + " [compile]");
+                    if (!r.runtimeFiles.contains(f)) {
+                        reporter.info("        " + f.getPath() + " [compile]");
+                    }
                 }
                 for (File f : r.runtimeFiles) {
                     reporter.info("        " + f.getPath());

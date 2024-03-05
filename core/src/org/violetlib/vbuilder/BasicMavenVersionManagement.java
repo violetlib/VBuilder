@@ -40,6 +40,7 @@ public class BasicMavenVersionManagement
 
     private final @NotNull Reporter reporter;
     private final @NotNull Map<String,String> preferredVersions = new HashMap<>();
+    private final @NotNull Map<String,Scope> scopes = new HashMap<>();
     private boolean isGlobalInstalled;
 
     private BasicMavenVersionManagement(@NotNull Reporter reporter)
@@ -51,6 +52,27 @@ public class BasicMavenVersionManagement
     public @Nullable String getPreferredVersion(@NotNull String key)
     {
         return preferredVersions.get(key);
+    }
+
+    @Override
+    public @Nullable Scope getScope(@NotNull String key)
+    {
+        return scopes.get(key);
+    }
+
+    @Override
+    public void setScope(@NotNull String key, @NotNull Scope scope)
+    {
+        Scope existing = scopes.get(key);
+        if (existing != null) {
+            if (existing.equals(scope)) {
+                return;
+            }
+            reporter.info("Override ignored for " + key + " scope (" + existing + " supersedes " + scope + ")");
+        } else {
+            reporter.verbose("Setting scope for " + key + " to " + scope + " " + this);
+            scopes.put(key, scope);
+        }
     }
 
     @Override
@@ -74,7 +96,7 @@ public class BasicMavenVersionManagement
                 reporter.error("Invalid artifact key: " + key);
             }
         } else if (!existing.equals(version)) {
-            reporter.info("Override ignored for " + key + " preferred version (" + version + ")");
+            reporter.info("Override ignored for " + key + " preferred version (" + existing + " supersedes " + version + ")");
         }
     }
 
@@ -85,7 +107,7 @@ public class BasicMavenVersionManagement
     }
 
     @Override
-    public void logPreferredVersions(@NotNull Reporter reporter)
+    public void logPreferredVersionsAndScopes(@NotNull Reporter reporter)
     {
         IList<String> keys = IList.create(preferredVersions.keySet()).sort();
         for (String key : keys) {

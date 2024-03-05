@@ -22,21 +22,21 @@ public class ArchitectureConfiguration
     public static @NotNull ArchitectureConfiguration
     create(@NotNull File outputRoot,
            @NotNull IList<File> appInstallDirs,
-           @NotNull File jdkRuntime)
+           @NotNull JavaRuntime javaRuntime)
     {
-        return new ArchitectureConfiguration(outputRoot, appInstallDirs, jdkRuntime);
+        return new ArchitectureConfiguration(outputRoot, appInstallDirs, javaRuntime);
     }
 
     public final @NotNull File outputRoot;             // where architecture-specific generated files are placed
     public final @NotNull IList<File> appInstallDirs;  // directories where the (single architecture) bundled application should be installed
-    public final @NotNull File jdkRuntime;             // the JDK runtime to use
+    public final @NotNull JavaRuntime javaRuntime;     // the Java runtime to use
 
     private ArchitectureConfiguration(@NotNull File outputRoot,
                                       @NotNull IList<File> appInstallDirs,
-                                      @NotNull File jdkRuntime)
+                                      @NotNull JavaRuntime javaRuntime)
     {
         this.outputRoot = outputRoot;
         this.appInstallDirs = appInstallDirs;
-        this.jdkRuntime = Utils.resolve(jdkRuntime);
+        this.javaRuntime = javaRuntime;
     }
 }
