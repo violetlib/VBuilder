@@ -539,6 +539,17 @@ public class NativeLibraryBuilder
                 // A system framework
                 String name = fr.getName();
                 if (!frameworks.contains(name)) {
+
+                    // Workaround for macOS bug
+
+                    if (name.equals("Quartz") && !frameworks.contains("QuickLookUI")) {
+                        frameworks.add("QuickLookUI");
+                        b.add("-weak_framework");
+                        b.add("QuickLookUI");
+                    }
+
+                    // End Workaround
+
                     frameworks.add(name);
                     b.add("-framework");
                     b.add(name);
